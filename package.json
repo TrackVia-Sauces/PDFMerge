@@ -1,0 +1,16 @@
+{
+  "name": "sales-summary-pdf",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "handlebars": "^4.0.6",
+    "html-pdf": "^2.1.0",
+    "trackvia-api": "^1.0.0"
+  }
+}
