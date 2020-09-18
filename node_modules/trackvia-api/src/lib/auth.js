@@ -18,6 +18,9 @@ class Auth {
     getAccessToken() {
         return this.accessToken;
     }
+    getRefreshToken() {
+        return this.refreshToken;
+    }
 
     setRefreshToken(refreshToken, secondsUntilExpiration) {
         this.refreshToken = refreshToken;

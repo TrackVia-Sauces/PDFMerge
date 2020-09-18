@@ -1,13 +1,26 @@
-
-const errorProps = ['description', 'fileName', 'lineNumber', 'message', 'name', 'number', 'stack'];
+const errorProps = [
+  'description',
+  'fileName',
+  'lineNumber',
+  'endLineNumber',
+  'message',
+  'name',
+  'number',
+  'stack'
+];
 
 function Exception(message, node) {
   let loc = node && node.loc,
-      line,
-      column;
+    line,
+    endLineNumber,
+    column,
+    endColumn;
+
   if (loc) {
     line = loc.start.line;
+    endLineNumber = loc.end.line;
     column = loc.start.column;
+    endColumn = loc.end.column;
 
     message += ' - ' + line + ':' + column;
   }
@@ -27,13 +40,22 @@ function Exception(message, node) {
   try {
     if (loc) {
       this.lineNumber = line;
+      this.endLineNumber = endLineNumber;
 
       // Work around issue under safari where we can't directly set the column value
       /* istanbul ignore next */
       if (Object.defineProperty) {
-        Object.defineProperty(this, 'column', {value: column});
+        Object.defineProperty(this, 'column', {
+          value: column,
+          enumerable: true
+        });
+        Object.defineProperty(this, 'endColumn', {
+          value: endColumn,
+          enumerable: true
+        });
       } else {
         this.column = column;
+        this.endColumn = endColumn;
       }
     }
   } catch (nop) {

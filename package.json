@@ -1,5 +1,5 @@
 {
-  "name": "sales-summary-pdf",
+  "name": "user-audit",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -9,8 +9,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "handlebars": "^4.0.6",
-    "html-pdf": "^2.1.0",
-    "trackvia-api": "^1.0.0"
+    "handlebars": "^4.7.3",
+    "html-pdf": "^2.2.0",
+    "moment": "^2.24.0",
+    "request": "^2.88.0",
+    "request-promise": "^4.2.5",
+    "trackvia-api": "^1.8.3"
   }
 }

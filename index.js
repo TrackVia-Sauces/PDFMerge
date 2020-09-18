@@ -1,225 +1,145 @@
-var fs = require('fs');
-var TrackviaAPI = require('trackvia-api');
-var pdf = require('html-pdf');
-var Handlebars = require('handlebars');
-var globalCallback = null;
+const constants = require('./constants');
+const TrackviaAPI = require('trackvia-api');
 
+const generateDocument = require('./services/generateDocument');
+const formatRecord = require('./services/formatRecord');
 
+exports.handler = async function(event, context, callback) {
+    context.callbackWaitsForEmptyEventLoop = false;
+    console.log('EVENT:', event);
 
-/*********************************************
- * Configuation specific to this account
- * 
- * Assume no major change to data structure, all changes to 
- * this code to work on different accounts/tables/views
- * should be made here.
- * 
- * If you need to update the template edit the
- * templates/template.hbs file. For more
- * information on the Handlebars template language
- * see http://handlebarsjs.com/
- **********************************************/
-// The API key that gives you access to the API
-// This is found at https://go.trackvia.com/#/my-info
-const API_KEY = '123456789';
+    const api = new TrackviaAPI(constants.key, constants.token, constants.host);
 
-// The name of the user to login as
-const USERNAME = 'api.user@trackvia.com';
-
-// The password of the user to login as
-const PASSWORD = 'correcthorsebatterystaple';
-
-// The address of the server you'll be using
-const PRODUCTION_SERVER = 'https://go.trackvia.com';
-
-// Name of the PDF we're going to create. This could
-// be pulled from a field in the record or generated
-// using a time stamp or other derived data
-const PDF_FILE_NAME = "test.pdf";
-
-// The numeric ID of the view to pull the data from
-// You can find this in the URL of your view
-// https://go.trackvia.com/#/apps/1/tables/2/views/3
-const VIEW_ID = 3;
-
-// The name of the field that is used to determine if a PDF
-// should be created
-const CREATE_PDF_CHECKBOX_FIELD_NAME = 'Create PDF';
-
-// The name of the field were the PDF file should be uploaded
-const PDF_FILE_FIELD_NAME = 'PDF';
-
-/*********************************************
- * Everything below here should only be edited
- * if substantial changes to the data structure
- * that are used to create the PDF are made,
- * or if a change in behavior is needed.
- ********************************************/
-
-
-
-
-
-
-// The TrackVia api for interaction with the data
-var api = new TrackviaAPI(API_KEY, PRODUCTION_SERVER);
-
-/**
- * Entry point into the micro service. This is where the
- * execution is kicked off
- */
-exports.handler = function(event, context, callback) {
-    console.log('---  starting  ---');
-    globalCallback = callback;
-    console.log(event);
-    // make sure we have a record ID
-    // Note, this will only be populated when an individual record
-    // is edited/created. For bulk edit scenarios it's recommend
-    // to use a filtered view that shows all records that need
-    // a PDF created
-    if (!event.recordId && !event.recordIds) {
-            console.log('---  No record ID. I am out  ---');
-    } else {
-        context.callbackWaitsForEmptyEventLoop = false;
-        step1GetData(api, event.recordId || event.recordIds[0]);
+    //@TODO: maybe the view should contain unique template IDs
+    // Fetch the records that were moved into the merging view
+    let records;
+    try {
+        records = await api.getView(constants.mergingViewId);
+    } catch (err) {
+        console.log('COULD NOT FETCH RECORDS:', err);
+        callback(err);
     }
-}
 
-/**
- * Step one get the data we want to build our PDF with
- * @param {TrackviaAPI} api 
- * @param {int} recordId 
- */
-function step1GetData(api, recordId){
-
-    // first we need to login
-    api.login(USERNAME, PASSWORD)
-    .then(() => {
-            console.log('Logged In.');
-            // now get a record
-            return api.getRecord(VIEW_ID, recordId);
-        })
-    .then((record) => {
-        console.log("I got the record");
-        // got a response..
-        console.log(record);
-        // get the data
-        var datas = record.data;
-        // create a map of field names to values
-        // be sure to strip out spaces from the field names
-        // so it'll work with the template format
-        dataMap = {};
-        for(var key in datas){
-            dataMap[key.replace(/\s/g, '')] = datas[key];
-        }
-        console.log("I created a data map");
-        console.log(dataMap);
-
-        // check if the CreatePDF checkbox is checked
-        if(!datas[CREATE_PDF_CHECKBOX_FIELD_NAME] || datas[CREATE_PDF_CHECKBOX_FIELD_NAME].length == 0){
-            console.log("There's nothing to do since the checkbox isn't checked")
-            if(globalCallback) {
-                globalCallback(null, 'Nothing to do');
-            }
-            return;
-        }
-
-        // now go make a PDF
-        step2CreatePdf(api, recordId, dataMap);
-        
-    })
-    .catch(function(err) {
-        globalCallback(err, null);
-    });
-}
-
-
-/**
- * In step 2 we create the HTML from our Handlebars template
- * and then we create a PDF from the HTML
- * @param {TrackviaAPI} api 
- * @param {int} recordId 
- * @param {object} dataMap 
- */
-function step2CreatePdf(api, recordId, dataMap){
-    console.log("step 2");
-    // now get the template file
-    fs.readFile('./templates/template.hbs', 'utf-8', function(err, hbsFile) {
-        // if there's an error log it.
-        if (err) { 
-            console.log(err);
-            globalCallback(err, null);
-            return;
-        }
-        // no error so compile the template
-        var template = Handlebars.compile(hbsFile);
-        var html = template(dataMap);
-        // print out the HTML just to be sure
-        console.log("Created this HTML from the template");
-        console.log(html);
-        
-        // setup some options so the PDF is lovely
-        var options = {
-            format: 'Letter',
-            base: 'file://' + __dirname + '/',
-            border: {
-                "top": "0.5in",
-                "right": "0.5in",
-                "bottom": "0.5in",
-                "left": "0.5in"
-            }
-        };
-
-        // create the PDF
-        pdf.create(html, options).toFile('/tmp/' + PDF_FILE_NAME, function(err, res) {
-            // if something went wrong tell us and leave
-            if (err) {
-                console.log('ERROR: ' + err);
-                if(globalCallback){
-                    globalCallback(err, null);
-                }
-                return;
-            }
-
-            // nothing went wrong so onward and upward
-            step3SavePDF(api, recordId, res.filename);
-        });
-    });
-}
-
-
-/**
- * In step 3 we upload the PDF to TrackVia and reset the 
- * checkbox field
- * @param {TrackviaAPI} api 
- * @param {int} recordId 
- * @param {String} fileName 
- */
-function step3SavePDF(api, recordId, fileName){
-    console.log("step 3");
-
-    // upload the file to the API
-    api.attachFile(VIEW_ID, recordId, PDF_FILE_FIELD_NAME, fileName)
-    .then(function(result) {
-        console.log('file added');
-
-        // ok now get the identifier of the file that we added and 
-        // associate it with the record.
-        var fileIdentifier = result.identifier;
-        
-        // edit the record to set the pdf checkbox back to empty
-        resetPDFCheckBox = {};
-        resetPDFCheckBox[CREATE_PDF_CHECKBOX_FIELD_NAME] = [];
-
-        // edit the record
-        return api.updateRecord(VIEW_ID, recordId, resetPDFCheckBox);
-    })
-    .then(function(result) {
-        // and we did it!!
-        console.log("all done");
-        globalCallback(null, 'success');
+    // If there are no records in the view return
+    if(records.totalCount === 0) {
+        callback(null, 'No records to merge');
         return;
-    })
-    .catch(function(err) {
-        globalCallback(err, null);
-    });
-}
+    }
+
+    // Identify any image fields that need to be fetched
+    let imageFields = [];
+    for(let field of records.structure) {
+        if(field.type === 'image') {
+            imageFields.push(field.name);
+        }
+    }
+
+    // Get each image field on every record
+    for(let record of records.data) {
+        for(let field of imageFields) {
+            try {
+                // load the images in a series because API returns 404 if field is empty
+                const image = await api.getFile(constants.mergingViewId, record.id, field);
+                // Extract the image type from the reponse header
+                const type = image.response.headers['content-disposition'].match(/"(.*)"/).pop().split('.')[1];
+                const contents = image.body;
+                // Convert file contents to base64 string for transport
+                const imageB64 = `data:image/${type};base64,${Buffer.from(contents, 'binary').toString('base64')}`;
+                // Finally attach converted image to record
+                record[field] = imageB64;
+            } catch(err) {
+                // In case of an image field being outside of a view or the image being absent on the record
+                if(err.statusCode === 404) {
+                    continue;
+                } else {
+                    console.log("COULD NOT FETCH IMAGES FOR RECORD:", err);
+                    callback(err);
+                }
+            }
+        }
+    }
+
+     //@TODO: maybe the reset should happen in parallel
+    // Reset the records now that they have been extracted from the view
+    for(let record of records.data) {
+        // Define the object that actually nullifys the relationship
+        reset = {};
+        reset[constants.recordLinkToTemplateField] = null;
+        try {
+            await api.updateRecord(constants.mergingViewId, record.id, reset);
+        } catch (err) {
+            console.log('COULD NOT RESET LINK TO TEMPLATE:', err);
+            callback(err);
+        }
+    }
+
+    // Create a map of templates to merge with
+    let templateMap = {};
+    for(let record of records.data) {
+        // Parse the template ID to merge into
+        const templateId = record[`${constants.recordLinkToTemplateField}(id)`];
+        if(!templateMap[templateId]) {
+            // Fetch the new template
+            let template;
+            try {
+                template = await api.getFile(constants.templateViewId, templateId, constants.templateDocumentField);
+            } catch (err) {
+                console.log('COUND NOT FETCH TEMPLATE:', err);
+                callback(err);
+            }
+            // Body contains the raw file contents
+            const contents = template.body;
+            // Extract the original file name from the header
+            const name = template.response.headers['content-disposition'].match(/"(.*)"/).pop();
+            // Put response into template map
+            templateMap[templateId] = {
+                contents: contents,
+                name: name
+            };
+        }
+    }
+
+    // Generate a document for each record
+    for(let record of records.data) {
+        // Transform record into correct template format
+        let formatted;
+        try {
+            formatted = formatRecord(record, records.structure);
+        } catch (err) {
+            console.log('COULD NOT FORMAT RECORD:', err);
+            callback(err);
+        }
+        // Hang on to the template ID
+        const templateId = record[`${constants.recordLinkToTemplateField}(id)`];
+        // Let the service generate a document
+        try {
+            await generateDocument(formatted, templateMap[templateId], constants.destinationDocumentPath);
+        } catch (err) {
+            console.log('COULD NOT GENERATE DOCUMENT:', err);
+            callback(err);
+        }
+        // Create a record to hold the generated document
+        let destination;
+        try {
+            // Set the relationships on the destination table for the new record
+            let data = {};
+            data[constants.destinationLinkToTemplateField] = templateId;
+            data[constants.destinationLinkToRecordField] = record.id;
+
+            destination = await api.addRecord(constants.destinationViewId, data);
+        } catch (err) {
+            console.log('COULD NOT GENERATE DESTINATION RECORD:', err);
+            callback(err);
+        }
+        // Attach finished document to newly created file
+        try {
+            await api.attachFile(constants.destinationViewId, destination.data[0].id, constants.destinationDocumentField, constants.destinationDocumentPath);
+        } catch (err) {
+            console.log('COULD NOT ATTACH GENERATED DOCUMENT:', err);
+            callback(err);
+        }
+        
+    }
+
+    callback(null, 'success');
+};
