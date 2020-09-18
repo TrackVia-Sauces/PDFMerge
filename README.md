@@ -1,15 +1,33 @@
-# PDF Generation
+# PDFMerge
+Merges records from a table into a .pdf file using a .hbs template.
 
-This sauce shows how to use third party open source libraries to create a PDF from your record data. This particular example uses the Handlebars templating engine [http://handlebarsjs.com/](http://handlebarsjs.com/) via the handlebars NPM package [https://www.npmjs.com/package/handlebars](https://www.npmjs.com/package/handlebars) to create an
-HTML template with your data. Then we use the NPM package [https://www.npmjs.com/package/html-pdf](https://www.npmjs.com/package/html-pdf) to turn that HTML into a PDF.
+This sauce requires that you have the following TrackVia architecture
+* A table with a document field that will hold the templates for your .pdf merges. We will refer to this as the `Template` table. If you want to change a template, you need to upload a new template file. If you want to use multiple templates, create multiple records in this table.
 
-This example looks for a checkbox field called `Create PDF` to see if a PDF should be made. If any value is checked in that checkbox field then it will create a PDF; if no value is checked no PDF will be created.
-## Setup
+* A table with a document field that will hold the merged .pdf file. We will refer to this as the `Destination` table. After a successful merge a new record will be created in this table and the merged file will be uploaded to it.
 
-To use this sauce edit the constants in the [index.js](https://github.com/Trackvia/Sauces/blob/master/PDF_generation/index.js) file to align with your account's setup. You'll need to put in your API user key, username, password, the numeric viewID of the view where the record to be turned into a PDF can be found, the name of the file field where the PDF should be uploaded, and the name of the checkbox field that will determine if a PDF should be created.
+* A table that holds the records which you would like to merge into .pdf files. We will refer to this as the `Records` table.
 
-In the [template/template.hbs](https://github.com/Trackvia/Sauces/blob/master/PDF_generation/templates/template.hbs) file replace the fields in double curly braces with the names of the fields in your record. The template won't allow spaces in the names so remove any spaces in your field name. For example a field called `"First Name"` should be represented as `{{FirstName}}` in the template file.
+* A view that is filtered to contain the records that have a template relationship set.  The sauce pulls records from this view.  The filter should check that the relationship to the `Template` table is not blank.
 
-To install this, compress everything into a .zip file and upload as an integration in TrackVia [https://go.trackvia.com/#/integrations](https://go.trackvia.com/#/integrations). Then go to the table where the records you want to make into PDFs are located and associate the integration with a table event, such as `After Insert`. The exact URL you use will depend on your account, but it will be something along the lines of https://go.trackvia.com/#/apps/1/tables/edit/2/integrations. You can associate the same integration with more than one table event if you want to create PDFs on both create and edit events. 
+Here is an example of the required ERD for an app that has been setup to perform .pdf merge on a table called *Records*. The .hbs templates are stored in the table called *Templates* and the resulting documents are stored in *Destination*.
 
-That's it, you should be good to go after that. For more info on how this works please see the comments in [index.js](https://github.com/Trackvia/Sauces/blob/master/PDF_generation/index.js).
+![alt text](https://raw.githubusercontent.com/TrackVia-Sauces/PDFMerge/master/images/exampleERD.png "Example ERD")
+
+
+## Installation
+Download or clone this repository and run `npm install` to install all the packages needed to run this sauce.
+
+## Configuration
+First copy `constants.template.js` as `constants.js` and then change `constants.js` to match the details of your account.
+
+Once you've configured your `constants.js` file, zip the files, and use the zip file as your source for configuring the TrackVia microservice.
+
+Attach the .pdf merge microservice to the `Records` table on the `After Update` event.
+
+## .hbs Templates
+The [template file included](https://github.com/TrackVia-Sauces/PDFMerge/blob/master/template/template.hbs) shows how to use curly braces `{}` to add variables to your .pdf file that will be replaced by values from your TrackVia records.
+
+* If the field names in your records have spaces replace them with underscores. For example a field called `First Name` would be written as `{First_Name}` in the template.
+* Field names are case sensitive. If your field in TrackVia is `First name` then you must call it `{First_name}` in the template file.
+* Field names cannot have special characters. For example you cannot use `{#_of_days}`. The sauce will remove `#, ", ', !, @, $, %, ^, (, ), *, =, +, &` from field names. For instance, if you have a field called "cash$" you can refer to it as `{cash}` in the template.
